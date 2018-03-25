@@ -1,0 +1,32 @@
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    location /health {
+        access_log off;
+        return 200;
+    }
+
+    root /usr/share/nginx/html/moodle;
+
+    rewrite ^/(.*\.php)(/)(.*)$ /$1?file=/$3 last;
+
+    index index.php index.html index.htm;
+
+    # TODO: Documentation.
+    # TODO: Remove below - testing purposes.
+    server_name mfabriczy.com;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php7.0-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}

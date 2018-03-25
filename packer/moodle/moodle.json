@@ -1,0 +1,100 @@
+{
+  "variables": {
+    "aws_access_key": "{{env `AWS_ACCESS_KEY_ID`}}",
+    "aws_secret_key": "{{env `AWS_SECRET_ACCESS_KEY`}}",
+    "aws_region": "ap-southeast-2",
+    "instance_type": "t2.micro",
+    "ssh_username": "ubuntu",
+    "scripts_dir": "scripts",
+    "consul_version": "0.9.3",
+    "consul_module_version": "v0.0.2",
+    "tls_path": "/Users/mfabriczy/Desktop/terraform-moodle/packer/vault-consul/tls"
+  },
+  "builders": [{
+    "ami_name": "moodle-lepp-{{timestamp}}",
+    "type": "amazon-ebs",
+    "access_key": "{{user `aws_access_key`}}",
+    "secret_key": "{{user `aws_secret_key`}}",
+    "region": "{{user `aws_region`}}",
+    "source_ami_filter": {
+      "filters": {
+        "virtualization-type": "hvm",
+        "name": "ubuntu/images/*ubuntu-xenial-16.04-amd64-server-*",
+        "root-device-type": "ebs"
+      },
+      "owners": ["099720109477"],
+      "most_recent": true
+    },
+    "instance_type": "{{user `instance_type`}}",
+    "ssh_username": "{{user `ssh_username`}}"
+  }],
+  "provisioners": [
+    {
+      "type": "shell",
+      "execute_command": "echo {{user `ssh_username`}} | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+      "inline": [
+        "mkdir -p /ops/{{user `scripts_dir`}}",
+        "chmod a+w /ops/{{user `scripts_dir`}}"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "{{user `scripts_dir`}}/.",
+      "destination": "/ops/{{user `scripts_dir`}}"
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo {{user `ssh_username`}} | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+      "inline": [
+        "sh /ops/{{user `scripts_dir`}}/dependencies.sh",
+        "sh /ops/{{user `scripts_dir`}}/setup.sh",
+        "sh /ops/{{user `scripts_dir`}}/install-moodle.sh"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "templates/default",
+      "destination": "/etc/nginx/sites-available"
+    },
+    {
+      "type": "file",
+      "source": "templates/config.php",
+      "destination": "/usr/share/nginx/html/moodle"
+    },
+    {
+      "type": "file",
+      "source": "../../modules/vault-consul/update-certificate-store",
+      "destination": "/tmp"
+    },
+    {
+      "type": "file",
+      "source": "{{user `tls_path`}}",
+      "destination": "/tmp"
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo {{user `ssh_username`}} | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+      "inline": [
+        "mv /ops/{{user `scripts_dir`}}/vault-client-init.sh ~/",
+        "chmod +x ~/vault-client-init.sh",
+        "/tmp/update-certificate-store/update-certificate-store --cert-file-path /tmp/tls/ca.crt.pem"
+      ]
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo {{user `ssh_username`}} | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+      "inline": [
+        "git clone --branch {{user `consul_module_version`}} https://github.com/hashicorp/terraform-aws-consul.git /tmp/terraform-aws-consul",
+        "/tmp/terraform-aws-consul/modules/install-consul/install-consul --version {{user `consul_version`}}",
+        "/tmp/terraform-aws-consul/modules/install-dnsmasq/install-dnsmasq"
+      ]
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo {{user `ssh_username`}} | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+      "inline": [
+        "sh /ops/{{user `scripts_dir`}}/cleanup.sh"
+      ]
+    }
+  ]
+}
